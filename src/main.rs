@@ -148,8 +148,8 @@ fn initialize_board(
     // println!("... entering fn initialize_board");
     for j in 0..n * m {
         for i in 0..n * m {
-            if (i == j-n)                          // i has j as its neighbour below
-                || (i == j-1 && ((i+1) % n != 0))   // i has j as its neighbour to the right (if not i is at the right hand rim) 
+            if (j >= n && (i == j-n))                          // i has j as its neighbour below
+                || (j > 0 && (i == j-1 && ((i+1) % n != 0)))   // i has j as its neighbour to the right (if not i is at the right hand rim) 
                 || (i == j+1 && (i % n != 0))       // i has j as its neighbour to the left (if not i is at the left hand rim)
                 || (i == j+n)
             {
@@ -165,7 +165,7 @@ fn initialize_board(
 
 fn check_board(
     board: &mut Box<[[bool; N_MAX * M_MAX]; N_MAX * M_MAX]>,
-    visited: &mut usize,
+    visited: usize,
     solutions: &mut i64,
     v: usize,
     n: usize,
@@ -175,7 +175,7 @@ fn check_board(
     // println!("... entering fn check_board with (board = b, visited= {}, solutions = {}, vertice = {}, n={}, m={}", visited, solutions, v, n, m);
     // let mut input_str ="".to_string();
     // stdin().read_line(&mut input_str).expect("Could not read line");
-    if *visited + 1 == n * m {
+    if visited + 1 == n * m {
         //all vertices visited - can we make it back to the start vertice (0)?
         if board[0][v] {
             // success!
@@ -189,11 +189,10 @@ fn check_board(
     }
 
     board[v][v] = true; // mark vertice v as visited
-    *visited += 1;
     for i in 0..n * m {
         if i != v && board[i][v] && !board[i][i] {
             // (i==v is no edge) there is an edge from v to i, and vertice i has not been visited yet
-            check_board(board, visited, solutions, i, n, m); // try finding a solution by traversing the edge from v to i and search for solutions from there
+            check_board(board, visited + 1, solutions, i, n, m); // try finding a solution by traversing the edge from v to i and search for solutions from there
         }
     }
     board[v][v] = false; // mark vertice v as unvisited
@@ -218,11 +217,10 @@ fn main() {
             let run_duration = SystemTime::now();
             let mut solutions: i64 = 0;
             board[0][0] = true; // start top left in vertice 0
-            let mut visited = 1;
             let vertice_to_visit = 1; // define first step to the right to avoid checking solutions 'in both directions'
             check_board(
                 &mut board,
-                &mut visited,
+                1,
                 &mut solutions,
                 vertice_to_visit,
                 n,
