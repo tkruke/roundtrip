@@ -15,7 +15,6 @@
      - it follows that the number of edges = number of vertices = n * m
      - all corner vertices (top left/right and bottom left/right) have only two neighbours (no diagonal edges allowed)
         and must therefore have edges connecting them
-     - there must be exactly n x m edges
      - the number of horizontal lines (edges) must be even, as must the number of vertical lines (edges)
      - from this it follows that n x m must be an even number and hence; n and/or m must be even
         (3x3, 5x5, 3x7 etc. has no solution - please feel free to try!)
@@ -38,9 +37,9 @@
 
     First of all, I wondered how many different solutions could be created if we didn't put any edges into the start state.
     Then I started considering different matrix sizes. Is there a formula for the number of variations for an n x m matrix?
-    It was pretty easy to prove that nxm had to be an even number. That is; there are no solutions to a n x m matrix when
-    both n and m are odd numbers. Next, I explored small matrices by hand. It became obvious that the number of solutions
-    grew very quickly as n and m indcreased. But with no obvious pattern to be seen from those small examples that I could
+    It is pretty easy to prove that nxm has to be an even number. That is; there are no solutions to a n x m matrix when
+    both n and m are odd. Next, I explored small matrices by hand. It became obvious that the number of solutions
+    grew very quickly as n and m increased. But I was not able to see any obvious pattern  from the small examples I could
     calculate by hand. So I wrote a computer program to check for solutions for larger matrices.
 
     My first attempt was based on tilings of the (n-1) x (m-1) matrix. I soon found that the rule for solutions to the
@@ -50,20 +49,21 @@
     'known' combinatoric pattern.
 
     So here I set out to explore more. Maybe my first program had an error? Maybe I wasn't able to remove duplicates?
-    Or maybe I should consider solutions that are identical when rotating the matrix as different? What about reflexive
-    solutions - should they be counted as different or not? But most of all - was my first attempt, where I considered
-    tiles inside vs outside the loop inferior to an attempt to find the edges?
+    Or maybe I should consider remove solutions that are identical when rotating the matrix? What about 'flipped'
+    solutions - should they be counted as different or not? But most of all - was my first attempt not really equivalent
+    to the original problem of finding the edges that form a closed loop including all vertices?
 
     In this program we set out to search the solution space by traveling from an original vertice through edges to neighbouring
-    edges until we find all possible versions ending with a valid solution (n * m edges in a closed loop through all vertices).
-    I aim to find all possible paths, and then analyse the number of solutions that are similar under the opertion of
-    rotation. If that doesn't give any clue for the pattern then I will consider also analyzing solutions that are similar under
-    the operation of reflextion (both horizontal, vertical and around the two diagonals).
-
+    edges until we find all possible versions ending with a valid solution (n*m edges in a closed loop visiting all vertices).
+    The algorithm aims to find all possible paths. And this time we don't care if we get patterns that are 'equal' when rotated. 
+    
     Brønnøysund, 9.9.2020
     Torgeir Kruke
 
     v0.1 - project created and some initiating code in place
+    v0.2 - first version generating solutions for matrices up to about 6x6
+    v0.3 - using box'ing to avoid stack usage (thanks Anders :)
+
 
 -------------------------------------*/
 
@@ -78,7 +78,7 @@ fn get_matrix_dimension() -> (usize, usize) {
     loop {
         let mut input_n = "".to_string();
         let mut input_m = "".to_string();
-        println!("Enter matrix size N x M (or 0 to end)");
+        println!("Enter matrix size n x m (or 0 to end)");
         print!("N: ");
         stdout().flush().ok().expect("Could not flush stdout");
         stdin()
@@ -184,12 +184,24 @@ fn check_board(
             // println!("... SOLUTION found!");
             *solutions += 1;
             // println!("solution #{}!", solutions);
-            if (*solutions + 1) % 1000 == 0 {
-                println!("{:?}: {} solutions", systime.elapsed(), *solutions+1);
-            }
+                if (*solutions + 1) % 1000 == 0 {
+                    println!("{:?}: {} solutions", systime.elapsed(), *solutions+1);
+                }
             return;
         } else {
             // failure!
+            return;
+        }
+    }
+    // Pruning
+    // Test 1: Exit if a vertice at the edge of the lattice is reached and there are unvisited
+    //          neighbour edge vertices on both sides
+    if (v < n - 1) || (v > n * (m-1) && v < n*m - 1) { // vertice in top or bottom row (but not a corner)
+        if !board[v-1][v-1] && !board[v+1][v+1] {
+            return;
+        }
+    } else if v > n-1 && v < n*(m-1) && (v % n == n-1 || v % n == 0) { // left or right edge
+        if !board[v-n][v-n] && !board[v+n][v+n] {
             return;
         }
     }
@@ -225,13 +237,13 @@ fn main() {
             let vertice_to_visit = 1; // define first step to the right to avoid checking solutions 'in both directions'
             check_board(
                 &mut board,
-                1,
-                &mut solutions,
-                vertice_to_visit,
+                1, 
+                &mut solutions, 
+                vertice_to_visit, 
                 n,
                 m,
-                &run_duration,
-            ); // parameters: board, #visited_so_far, #solutions_so_far, vertice_to_visit, matrix_dimension_n, matrix_dimension_m
+            &run_duration,
+        ); // parameters: board, #visited_so_far, #solutions_so_far, vertice_to_visit, matrix_dimension_n, matrix_dimension_m
             println!("{} solutions found", solutions);
             println!("Run duration: {:?}", run_duration.elapsed());
         }
