@@ -170,6 +170,7 @@ fn check_board(
     v: usize,
     n: usize,
     m: usize,
+    systime: &SystemTime,
 ) {
     // parameters: board, #visited_so_far, #solutions_so_far, vertice_to_visit, matrix_dimension_n, matrix_dimension_m
     // println!("... entering fn check_board with (board = b, visited= {}, solutions = {}, vertice = {}, n={}, m={}", visited, solutions, v, n, m);
@@ -181,6 +182,10 @@ fn check_board(
             // success!
             // println!("... SOLUTION found!");
             *solutions += 1;
+            // println!("solution #{}!", solutions);
+            if *solutions % 1000 == 0 {
+                println!("{:?}: {} solutions", systime.elapsed(), solutions);
+            }
             return;
         } else {
             // failure!
@@ -192,7 +197,7 @@ fn check_board(
     for i in 0..n * m {
         if i != v && board[i][v] && !board[i][i] {
             // (i==v is no edge) there is an edge from v to i, and vertice i has not been visited yet
-            check_board(board, visited + 1, solutions, i, n, m); // try finding a solution by traversing the edge from v to i and search for solutions from there
+            check_board(board, visited + 1, solutions, i, n, m, systime); // try finding a solution by traversing the edge from v to i and search for solutions from there
         }
     }
     board[v][v] = false; // mark vertice v as unvisited
@@ -225,6 +230,7 @@ fn main() {
                 vertice_to_visit,
                 n,
                 m,
+                &run_duration,
             ); // parameters: board, #visited_so_far, #solutions_so_far, vertice_to_visit, matrix_dimension_n, matrix_dimension_m
             println!("{} solutions found", solutions);
             println!("Run duration: {:?}", run_duration.elapsed());
