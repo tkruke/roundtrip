@@ -148,8 +148,8 @@ fn initialize_board(
     // println!("... entering fn initialize_board");
     for j in 0..n * m {
         for i in 0..n * m {
-            if (i == j-n)                          // i has j as its neighbour below
-                || (i == j-1 && ((i+1) % n != 0))   // i has j as its neighbour to the right (if not i is at the right hand rim) 
+            if (j >= n && (i == j-n))                          // i has j as its neighbour below
+                || (j > 0 && (i == j-1 && ((i+1) % n != 0)))   // i has j as its neighbour to the right (if not i is at the right hand rim) 
                 || (i == j+1 && (i % n != 0))       // i has j as its neighbour to the left (if not i is at the left hand rim)
                 || (i == j+n)
             {
@@ -165,12 +165,13 @@ fn initialize_board(
 
 fn check_board(
     board: &mut Box<[[bool; N_MAX * M_MAX]; N_MAX * M_MAX]>,
-    mut visited: usize,
-    mut solutions: i64,
+    visited: usize,
+    solutions: &mut i64,
     v: usize,
     n: usize,
     m: usize,
-) -> i64 {
+    systime: &SystemTime,
+) {
     // parameters: board, #visited_so_far, #solutions_so_far, vertice_to_visit, matrix_dimension_n, matrix_dimension_m
     // println!("... entering fn check_board with (board = b, visited= {}, solutions = {}, vertice = {}, n={}, m={}", visited, solutions, v, n, m);
     // let mut input_str ="".to_string();
@@ -180,23 +181,27 @@ fn check_board(
         if board[0][v] {
             // success!
             // println!("... SOLUTION found!");
-            return solutions + 1;
+            *solutions += 1;
+            // println!("solution #{}!", solutions);
+            if *solutions % 1000 == 0 {
+                println!("{:?}: {} solutions", systime.elapsed(), solutions);
+            }
+            return;
         } else {
             // failure!
-            return solutions;
+            return;
         }
     }
 
     board[v][v] = true; // mark vertice v as visited
-    visited += 1;
     for i in 0..n * m {
         if i != v && board[i][v] && !board[i][i] {
             // (i==v is no edge) there is an edge from v to i, and vertice i has not been visited yet
-            solutions = check_board(board, visited, solutions, i, n, m); // try finding a solution by traversing the edge from v to i and search for solutions from there
+            check_board(board, visited + 1, solutions, i, n, m, systime); // try finding a solution by traversing the edge from v to i and search for solutions from there
         }
     }
     board[v][v] = false; // mark vertice v as unvisited
-    return solutions;
+    return;
 }
 
 fn main() {
@@ -217,9 +222,16 @@ fn main() {
             let run_duration = SystemTime::now();
             let mut solutions: i64 = 0;
             board[0][0] = true; // start top left in vertice 0
-            let visited = 1;
             let vertice_to_visit = 1; // define first step to the right to avoid checking solutions 'in both directions'
-            solutions = check_board(&mut board, visited, solutions, vertice_to_visit, n, m); // parameters: board, #visited_so_far, #solutions_so_far, vertice_to_visit, matrix_dimension_n, matrix_dimension_m
+            check_board(
+                &mut board,
+                1,
+                &mut solutions,
+                vertice_to_visit,
+                n,
+                m,
+                &run_duration,
+            ); // parameters: board, #visited_so_far, #solutions_so_far, vertice_to_visit, matrix_dimension_n, matrix_dimension_m
             println!("{} solutions found", solutions);
             println!("Run duration: {:?}", run_duration.elapsed());
         }
