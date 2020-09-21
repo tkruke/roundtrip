@@ -164,7 +164,8 @@ fn initialize_board(
 }
 
 fn check_board(
-    board: &mut Box<[[bool; N_MAX * M_MAX]; N_MAX * M_MAX]>,
+    //board: &mut Box<[[bool; N_MAX * M_MAX]; N_MAX * M_MAX]>,
+    board: &mut [[bool; N_MAX * M_MAX]; N_MAX * M_MAX],
     visited: usize,
     solutions: &mut i64,
     v: usize,
@@ -216,8 +217,7 @@ fn main() {
         } else {
             /* All clear - GO! */
             println!("Initializing");
-            let b = [[false; N_MAX * M_MAX]; N_MAX * M_MAX];
-            let mut board = Box::new(initialize_board(b, n, m));
+            let mut board = initialize_board([[false; N_MAX * M_MAX]; N_MAX * M_MAX], n, m);
             println!("Searching solutions for {:?} x {:?} matrix", n, m);
             let run_duration = SystemTime::now();
             let mut solutions: i64 = 0;
