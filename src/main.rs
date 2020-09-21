@@ -183,8 +183,8 @@ fn check_board(
             // println!("... SOLUTION found!");
             *solutions += 1;
             // println!("solution #{}!", solutions);
-            if *solutions % 1000 == 0 {
-                println!("{:?}: {} solutions", systime.elapsed(), solutions);
+            if (*solutions + 1) % 1000 == 0 {
+                println!("{:?}: {} solutions", systime.elapsed(), *solutions+1);
             }
             return;
         } else {
