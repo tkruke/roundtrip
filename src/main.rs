@@ -74,6 +74,34 @@ use std::time::SystemTime;
 const N_MAX: usize = 20;
 const M_MAX: usize = 20;
 
+struct Metrics {
+    pub run_duration: SystemTime,
+    pub check_counter: i64,
+    pub fail_counter_1: i64,
+    pub fail_counter_2: i64,
+    pub fail_counter_3: i64,
+    pub exception_counter: i64,
+    pub solutions_counter: i64,
+    pub visited_vertices: usize,
+    pub visited_rim_vertices: usize,
+}
+
+impl Metrics {
+    pub fn new () -> Self {
+        Metrics {
+            run_duration: SystemTime::now(),
+            check_counter: 0,
+            fail_counter_1: 0,
+            fail_counter_2: 0,
+            fail_counter_3: 0,
+            exception_counter: 0,
+            solutions_counter: 0,
+            visited_vertices: 0,
+            visited_rim_vertices: 0,
+        }
+    }
+}
+
 fn get_matrix_dimension() -> (usize, usize) {
     loop {
         let mut input_n = "".to_string();
@@ -137,83 +165,220 @@ fn validate_board_size(n: usize, m: usize) -> bool {
     }
 }
 
-fn initialize_board(
-    mut b: [[bool; N_MAX * M_MAX]; N_MAX * M_MAX],
-    n: usize,
-    m: usize,
-) -> [[bool; N_MAX * M_MAX]; N_MAX * M_MAX] {
+fn initialize_board(board: &mut [[bool; N_MAX * M_MAX]; N_MAX * M_MAX], rim_vertices: &mut Vec<usize>, n: usize, m: usize, )  {
     // Initialize the adjecency matrix
-    // The diagonal b[i,i] will indicate if vertice i has been visited (1) or not (0)
-    // For the rest of the matrix b[i][j] = 1 indicates that there is an (undirected) edge between vertices i and j
-    // println!("... entering fn initialize_board");
+    // The diagonal b[i,i] will indicate if vertice i has been visited (true) or not (false)
+    // For the rest of the matrix b[i][j] = true indicates that there is an edge from vertice i to j
+    // If there is an edge both from i to j and from j to i, the edge betweed i and j is undirected
     for j in 0..n * m {
         for i in 0..n * m {
-            if (j >= n && (i == j-n))                          // i has j as its neighbour below
-                || (j > 0 && (i == j-1 && ((i+1) % n != 0)))   // i has j as its neighbour to the right (if not i is at the right hand rim) 
-                || (i == j+1 && (i % n != 0))       // i has j as its neighbour to the left (if not i is at the left hand rim)
-                || (i == j+n)
+            // println!("i, j = {}, {}", i, j);
+            if (j >= n && (i == j-n))                        // i has j as its neighbour below
+                || (j > 0 && (i == j-1 && ((i+1) % n != 0))) // i has j as its neighbour to the right (check that i is not at the right rim) 
+                || (i == j+1 && (i % n != 0))                // i has j as its neighbour to the left (check that i is not at the left hand rim)
+                || (i == j+n)                                // i has j as its neighbour above
             {
-                // i has j as its neighbour above
-                b[i][j] = true;
-                // println!("b[{}][{}] = 1", i, j);
+                board[i][j] = true;
+                // b[j][i] = true;  
+                    // this is surperflous since we traverse all nodes and include all valid neighbours; 
+                    // hence j -> i will also always be covered
             }
         }
     }
-    // println!("... returning from fn initialize_board");
-    return b;
+
+    // Now enforce some special initialization of directed edges for the rim nodes:
+    //      (1) Edges can only be traveled from a rim node to the inside of the lattice (initially)
+    //              (we reverse this operation for one edge at a time - whenever we travel from a rim node to the interior of the lattice
+    //              we allow the path to return to the rim through the (clockwise) neighbour edge)
+    //  AND (2) Nodes at the rim can only be visited in a clockwise direction 
+    //              (hence no anti-clockwise edges between rim nodes)
+    //  Note: (2) enforces that we only find paths going in clockwise direction. Otherwise we would find all paths twice; once 
+    //        going in a clockwise direction and once going anti-clockwise. 
+    for i in 0..n-1 {
+        println!("i = {}", i);
+        board[i+n+1][i+1] = false;                  // from second row to top (first) row
+        board[n*(m-2)+i][n*(m-1)+i] = false;        // from second to last row to bottom (last) row
+        board[i+1][i] = false;                      // top row
+        board[n*(m-1)+i][n*(m-1)+i+1] = false;      // bottom row
+    }
+    for j in 0..m-1 {
+        println!("j = {}", j);
+        board[j*n+1][j*n] = false;                  // from second column to left rim (first) column
+        board[(j+2)*n - 2][(j+2)*n - 1] = false;    // from second to last column to right rim (last) column
+        board[j*n][(j+1)*n] = false;                // left rim column
+        board[(j+2)*n-1][(j+1)*n-1] = false;        // right rim column
+    }
+
+    // Make a vector with all rim nodes in clockwise direction sequence (there are 2n+2m-4 rim nodes)
+    for i in 0..n {
+        rim_vertices.push(i);
+    }
+    for j in 1..m {
+        rim_vertices.push((j+1)*n - 1);
+    }
+    for i in 1..n {
+        rim_vertices.push(n*m-1 - i);
+    } 
+    for j in 1..m-1 {
+        rim_vertices.push(n*(m-1) - j*n); 
+    }
+    println!("#rim vertices = {}", rim_vertices.len()+1);
+    for i in 0..rim_vertices.len() {
+        println!("rim_vertices[{}] = {}", i, rim_vertices[i]);
+    }
+
+    // println!("... finished initializing board");
+    return;
 }
 
-fn check_board(
-    //board: &mut Box<[[bool; N_MAX * M_MAX]; N_MAX * M_MAX]>,
-    board: &mut [[bool; N_MAX * M_MAX]; N_MAX * M_MAX],
-    visited: usize,
-    solutions: &mut i64,
-    v: usize,
-    n: usize,
-    m: usize,
-    systime: &SystemTime,
-) {
-    // parameters: board, #visited_so_far, #solutions_so_far, vertice_to_visit, matrix_dimension_n, matrix_dimension_m
-    // println!("... entering fn check_board with (board = b, visited= {}, solutions = {}, vertice = {}, n={}, m={}", visited, solutions, v, n, m);
-    // let mut input_str ="".to_string();
-    // stdin().read_line(&mut input_str).expect("Could not read line");
-    if visited + 1 == n * m {
+fn check_board(board: &mut [[bool; N_MAX * M_MAX]; N_MAX * M_MAX], 
+    rim_vertices: &Vec<usize>, 
+    // mut visited_rim_vertices: usize, 
+    // visited_vertices: usize, 
+    solution_path: &mut Vec<usize>, 
+    // solutions_counter: &mut i64, 
+    v: usize, 
+    n: usize, 
+    m: usize, 
+    metrics: &mut Metrics,)
+    // check_counter: &mut i64, 
+    // fail_counter_1: &mut i64,
+    // fail_counter_2: &mut i64,
+    // fail_counter_3: &mut i64,
+    // exception_counter: &mut i64,
+    // run_duration: &SystemTime) 
+    {
+    metrics.check_counter += 1;
+    // print!("{},", v);  // debug print
+    let at_the_rim = rim_vertices.contains(&v); 
+    if at_the_rim {
+        metrics.visited_rim_vertices += 1;
+        if metrics.visited_rim_vertices == rim_vertices.len() && metrics.visited_vertices + 1 < n*m {
+            metrics.fail_counter_2 += 1;
+            //println!("no more rim - backtrack, check_counter = {}", check_counter);  // debug print
+            //print!("-{},", v); // debug print
+            return;  // all rim vertices has been visited, but there remains unvisited interior vertices => fail!
+        } 
+    }
+    if metrics.visited_vertices + 1 == n * m {
         //all vertices visited - can we make it back to the start vertice (0)?
-        if board[0][v] {
+        // ToDo: Prove that if you get here you MUST have a solution - so, no need for a final check
+        //if board[v][0] {
             // success!
             // println!("... SOLUTION found!");
-            *solutions += 1;
-            // println!("solution #{}!", solutions);
-                if (*solutions + 1) % 1000 == 0 {
-                    println!("{:?}: {} solutions", systime.elapsed(), *solutions+1);
-                }
+            metrics.solutions_counter += 1;
+            //println!("solution #{}!", solutions_counter);
+            //print!("-{}", v);
+            if (metrics.solutions_counter + 1) % 10000 == 0 {
+                println!("{:?}: {} solutions", metrics.run_duration.elapsed(), metrics.solutions_counter+1);
+            }
             return;
-        } else {
+        //} else {
             // failure!
-            return;
-        }
-    }
-    // Pruning
-    // Test 1: Exit if a vertice at the edge of the lattice is reached and there are unvisited
-    //          neighbour edge vertices on both sides
-    if (v < n - 1) || (v > n * (m-1) && v < n*m - 1) { // vertice in top or bottom row (but not a corner)
-        if !board[v-1][v-1] && !board[v+1][v+1] {
-            return;
-        }
-    } else if v > n-1 && v < n*(m-1) && (v % n == n-1 || v % n == 0) { // left or right edge
-        if !board[v-n][v-n] && !board[v+n][v+n] {
-            return;
-        }
+        //    *fail_counter_1 += 1;
+            //println!("fail, check_counter = {}", check_counter);
+            //print!("-{}", v);
+        //    return;
+        //}
     }
 
     board[v][v] = true; // mark vertice v as visited
+    solution_path.push(v);
+    let mut store_j = 0;
+    let mut store_next_rim_vertice = 0;
     for i in 0..n * m {
-        if i != v && board[i][v] && !board[i][i] {
-            // (i==v is no edge) there is an edge from v to i, and vertice i has not been visited yet
-            check_board(board, visited + 1, solutions, i, n, m, systime); // try finding a solution by traversing the edge from v to i and search for solutions from there
+        if board[v][i] && !board[i][i] {
+            // there is an edge from v to i, and vertice i has not been visited yet
+            let mut check_i = true;
+            if at_the_rim {
+                if !rim_vertices.contains(&i) { // we are about to enter the interior of the lattice...
+                    check_i = false;            // ... but we don't want to go to the interior unless we can set a return path to the rim
+                    // (this will happen when we are next to a corner vertice, or if we already visited the vertice providing the return edge)
+                    let next_rim_vertice = rim_vertices[metrics.visited_rim_vertices];
+                    for j in 0..n*m {
+                        if board[next_rim_vertice][j] && !rim_vertices.contains(&j) && !board[j][j] {
+                            board[j][next_rim_vertice] = true;  // we 'open' the return edge from the interior to the next rim vertice
+                            store_j = j; 
+                            store_next_rim_vertice = next_rim_vertice;
+                            check_i = true;  // return edge found - ok to continue 
+                            continue;
+                        }
+                    }
+                }
+            } else if !rim_vertices.contains(&i) {  // if we stay interior to the lattice...
+                //... then we can abort if we are about to create two separate 'islands' of unvisited vertices.
+                //  I.e. if we have unvisited vertices both left and right, while at least one of the vertices in front has been visited already.
+                //  This logic can be extended to incorporate cases when two regions are only connected through a single track
+                //  If so, we can only complete a cycle if we are in the opposite region to the one where our endpoint is.
+                //  In the special case where we approach the rim, the rim will act as such a single track connection and we have to go
+                //  to the left since the endpoint will always be to the right.
+                if v>i && v-i == n {
+                    // direction = 'n';
+                    if !board[v+n][v+n] && rim_vertices.contains(&(v-1)) && !board[v-1][v-1] {
+                        check_i = false;
+                    }   // "must go left" => cannot go this way
+                    if (board[i-n][i-n] || board[i-n-1][i-n-1] || board [i-n+1][i-n+1]) &&
+                        (!board[i-1][i-1] && !board[i+1][i+1]) {
+                            check_i = false;
+                    }
+                } else if v<i && i-v == n {
+                    // direction = 's';
+                    if !board[v-n][v-n] && rim_vertices.contains(&(v+1)) && !board[v+1][v+1] {
+                        check_i = false;
+                        //println!("south - must go left=north");
+                        //println!("v={}, i={}, board[v-n][v-n]={}, {}, solution_path:", v, i, board[v-n][v-n], rim_vertices.contains(&(v+1)));
+                        //for k in 0..solution_path.len() {
+                        //    print!("{},", solution_path[k]);
+                        //}
+                        //println!("");
+                    }   // "must go left" => cannot go this way
+                    if (board[i+n][i+n] || board[i+n-1][i+n-1] || board[i+n+1][i+n+1]) &&
+                        (!board[i-1][i-1] && !board[i+1][i+1]) {
+                            check_i = false;
+                    } 
+                } else if v>i && v-i == 1 {
+                    // direction = 'w';
+                    if !board[v+1][v+1] && rim_vertices.contains(&(v+n)) && !board[v+n][v+n] {
+                        check_i = false;
+                    }   // "must go left" => cannot go this way
+                    if (board[i-1][i-1] || board[i-1+n][i-1+n] || board[i-1-n][i-1-n]) &&
+                        (!board[i+n][i+n] && !board[i-n][i-n]) {
+                            check_i = false;
+                    }
+                } else if v<i && i-v == 1 {
+                    // direction = 'e';
+                    // If direction is 'east' we will always be going 'left'
+                    if (board[i+1][i+1] || board[i+1+n][i+1+n] || board[i+1-n][i+1-n]) &&
+                        (!board[i+n][i+n] && !board[i-n][i-n]) {
+                            check_i = false;
+                    }
+                }
+
+            }
+            if check_i {
+                // traverse edge from v to i and search for solutions from there
+                metrics.visited_vertices += 1;
+                check_board(board, 
+                    rim_vertices, 
+                    // visited_rim_vertices, 
+                    // visited_vertices + 1, 
+                    solution_path, 
+                    // solutions_counter, 
+                    i, // next vertice to visit
+                    n, m, 
+                    metrics, 
+                    // check_counter, fail_counter_1, fail_counter_2, fail_counter_3, exception_counter, run_duration
+                ); 
+                metrics.visited_vertices -= 1;
+            }
         }
     }
     board[v][v] = false; // mark vertice v as unvisited
+    solution_path.pop();
+    board[store_j][store_next_rim_vertice] = false; // reset if 'return edge' was set true 
+    // println!("backtrack - check_counter = {}", check_counter);
+    //print!("-{},", v);  // debug print
+    metrics.fail_counter_3 += 1;
     return;
 }
 
@@ -227,25 +392,49 @@ fn main() {
         if validate_board_size(n, m) == false {
             println!("Adjust parameters and try again!");
         } else {
-            /* All clear - GO! */
             println!("Initializing");
-            let mut board = initialize_board([[false; N_MAX * M_MAX]; N_MAX * M_MAX], n, m);
+            let mut board = [[false; N_MAX * M_MAX]; N_MAX * M_MAX];
+            let mut rim_vertices: Vec<usize> = vec![];
+            initialize_board(&mut board, &mut rim_vertices, n, m);
             println!("Searching solutions for {:?} x {:?} matrix", n, m);
-            let run_duration = SystemTime::now();
-            let mut solutions: i64 = 0;
-            board[0][0] = true; // start top left in vertice 0
-            let vertice_to_visit = 1; // define first step to the right to avoid checking solutions 'in both directions'
+            let mut metrics = Metrics::new();
+            // let run_duration = SystemTime::now();
+            // let mut check_counter: i64 = 0;
+            // let mut fail_counter_1: i64 = 0;
+            // let mut fail_counter_2: i64 = 0;
+            // let mut fail_counter_3: i64 = 0;
+            // let mut exception_counter: i64 = 0;
+            // let mut solutions_counter: i64 = 0;
+            // let visited_vertices = 0;
+            // let visited_rim_vertices = 0;
+            let vertice_to_visit = 0;   // start with vertice 0
+            let mut solution_path: Vec<usize> = vec![];
             check_board(
                 &mut board,
-                1, 
-                &mut solutions, 
+                &rim_vertices,
+                // visited_rim_vertices,
+                // visited_vertices,
+                &mut solution_path, 
+                // &mut solutions_counter, 
                 vertice_to_visit, 
                 n,
                 m,
-            &run_duration,
-        ); // parameters: board, #visited_so_far, #solutions_so_far, vertice_to_visit, matrix_dimension_n, matrix_dimension_m
-            println!("{} solutions found", solutions);
-            println!("Run duration: {:?}", run_duration.elapsed());
+                &mut metrics,
+                // &mut check_counter,
+                // &mut fail_counter_1,
+                // &mut fail_counter_2,
+                // &mut fail_counter_3,
+                // &mut exception_counter,
+                // &run_duration,
+            );
+            println!("");
+            println!("{} solutions found", metrics.solutions_counter);
+            println!("Check_counter = {}", metrics.check_counter);
+            println!("Fail counter 1 = {}", metrics.fail_counter_1);
+            println!("Fail counter 2 = {}", metrics.fail_counter_2);
+            println!("Fail counter 3 = {}", metrics.fail_counter_3);
+            println!("Exception counter = {}", metrics.exception_counter);
+            println!("Run duration: {:?}", metrics.run_duration.elapsed());
         }
     }
 }
